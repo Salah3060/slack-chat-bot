@@ -10,7 +10,7 @@ import slackConfig from './bots/config/slack.config';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env.development',
+      envFilePath: '.env.development.local',
       validationSchema: environmentValidationSchema,
       load: [slackConfig],
     }),
