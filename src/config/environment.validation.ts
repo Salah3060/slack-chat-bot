@@ -5,7 +5,7 @@ const envValidationSchema = Joi.object({
     .valid('development', 'production', 'test')
     .default('development'),
   SLACK_BOT_TOKEN: Joi.string().required(),
-  SLACK_SIGNING_SECRET: Joi.string().required(),
+  SLACK_CLIENT_SECRET: Joi.string().required(),
   SLACK_CHANNEL: Joi.string().required(),
 });
 

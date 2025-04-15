@@ -4,6 +4,7 @@ import { BotsProvider } from './providers/bots.provider';
 import { SlackProvider } from './providers/slack.provider';
 import { ConfigModule } from '@nestjs/config';
 import slackConfig from './config/slack.config';
+import { HttpModule } from '@nestjs/axios';
 
 /**
  * ConfigModule.forFeature(jwtConfig),
@@ -17,6 +18,6 @@ import slackConfig from './config/slack.config';
       useClass: SlackProvider,
     },
   ],
-  imports: [ConfigModule.forFeature(slackConfig)],
+  imports: [ConfigModule.forFeature(slackConfig), HttpModule],
 })
 export class BotsModule {}

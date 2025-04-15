@@ -3,17 +3,19 @@ import { BotsProvider } from './bots.provider';
 import { ConfigService } from '@nestjs/config';
 import { App } from '@slack/bolt';
 import { KnownBlock } from '@slack/types';
+import { HttpService } from '@nestjs/axios';
+import { lastValueFrom } from 'rxjs';
+import { URLSearchParams } from 'url';
+import { SendNotificationDto } from '../dtos/send-notification.dto';
+import { not } from 'joi';
 
 /**
  * @class SlackProvider
  * @description Concrete implementation of BotsProvider for Slack integration.
- * Follows Liskov Substitution Principle by properly implementing the abstract class contract.
- * Demonstrates Single Responsibility Principle by focusing solely on Slack communication.
  */
 @Injectable()
 export class SlackProvider implements BotsProvider {
   private app: App;
-  private channel: string;
   private readonly logger = new Logger(SlackProvider.name);
 
   /**
@@ -22,76 +24,111 @@ export class SlackProvider implements BotsProvider {
    * @param {ConfigService} configService - NestJS config service for retrieving environment variables
    */
 
-  constructor(private configService: ConfigService) {
-    // Get configuration values from the config service
-    const token = this.configService.get<string>('slack.botToken');
-    const signingSecret = this.configService.get<string>('slack.signingSecret');
-    this.channel = this.configService.get<string>('slack.channel') || '';
+  constructor(
+    /**
+     * @description Injected ConfigService for accessing environment variables.
+     * @type {ConfigService}
+     */
+    private readonly configService: ConfigService,
 
-    try {
-      // Initialize the Slack Bolt app
-      this.app = new App({
-        token,
-        signingSecret,
-        socketMode: false, // Set to true if you want to use Socket Mode with an app token
-      });
-    } catch (error) {
-      this.logger.error('Failed to initialize Slack app:', error);
-      throw new Error(`Slack app initialization failed: ${error.message}`);
-    }
-  }
+    /**
+     * @description Injected HttpService for making HTTP requests.
+     * @type {HttpService}
+     */
+    private readonly httpService: HttpService,
+  ) {}
 
   /**
    * @description Implements the abstract method to send notifications to Slack
    * @param {string} notification - The message content to be sent to Slack
    */
-  public async sendNotificationToBot(notification: string): Promise<void> {
-    if (!notification) {
-      this.logger.warn('Empty notification received, skipping send');
-      return;
-    }
-
-    if (!this.channel) {
-      throw new Error('Slack channel not configured');
-    }
-
-    const blocks = this.formatNotification(notification) || [];
-
+  public async sendNotification(
+    sendNotificationDto: SendNotificationDto,
+  ): Promise<void> {
+    const body = {
+      channel: sendNotificationDto.channel,
+      text: sendNotificationDto.notification,
+      blocks: {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: sendNotificationDto.notification,
+        },
+      },
+    };
     try {
-      // Send message to Slack using the Bolt client
-      const result = await this.app.client.chat.postMessage({
-        channel: this.channel,
-        blocks,
-        text: notification, // Fallback plain text for notifications
-        mrkdwn: true,
-      });
+      // Make API request to Slack
+      const response = await lastValueFrom(
+        this.httpService.post('https://slack.com/api/chat.postMessage', body, {
+          headers: {
+            Authorization: `Bearer ${sendNotificationDto.token}`,
+            'Content-Type': 'application/json',
+          },
+        }),
+      );
 
-      if (!result.ok) {
-        throw new Error(
-          `Slack API responded with error: ${result.error || 'Unknown error'}`,
-        );
+      // Verify the response
+      const { data } = response;
+      if (!data.ok) {
+        this.logger.error(`Slack API error: ${data.error}`);
+        throw new Error(`Failed to send Slack message: ${data.error}`);
       }
 
-      this.logger.debug(`Message sent to channel ${this.channel}`);
+      console.log(data);
+      return data;
     } catch (error) {
-      this.logger.error('Failed to send message to Slack:', error);
-      throw error;
+      this.logger.error(
+        `Error sending Slack notification: ${error.message}`,
+        error.stack,
+      );
+      throw new Error(`Slack notification failed: ${error.message}`);
     }
   }
 
   /**
-   * @description Formats a plain text notification into Slack block format
-   * @param {string} notification - The notification text to format
+   * @description Handles the OAuth token request from Slack
+   * @param {string} code - The authorization code received from Slack
    */
-  private formatNotification(notification: string): Array<KnownBlock> {
-    return [
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `${notification}`,
-        },
-      },
-    ];
+  public async requestOAuthToken(code: string): Promise<string> {
+    try {
+      if (!code) {
+        throw new Error('No authorization code received from Slack');
+      }
+
+      // Get credentials from configuration
+      const clientId = this.configService.get<string>('slack.clientId') || '';
+      const clientSecret =
+        this.configService.get<string>('slack.clientSecret') || '';
+      const redirectUri =
+        'https://511e-197-39-255-144.ngrok-free.app/bots/callback';
+
+      const params = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code: code,
+        redirect_uri: redirectUri,
+      });
+
+      // Exchange code for access token
+      const response = await lastValueFrom(
+        this.httpService.post(
+          'https://slack.com/api/oauth.v2.access',
+          params.toString(),
+          {
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+          },
+        ),
+      );
+      if (!response.data.ok) {
+        this.logger.error(`Slack OAuth error: ${response.data.error}`);
+        throw new Error(`Failed to get OAuth token: ${response.data.error}`);
+      }
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to request OAuth token from Slack:', error);
+      throw error;
+    }
   }
 }

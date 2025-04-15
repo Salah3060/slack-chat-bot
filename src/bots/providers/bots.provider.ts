@@ -1,5 +1,6 @@
 // filepath: d:\slack-bot-nest\slack-chat-bot\src\bots\providers\bots.provider.ts
 import { Injectable } from '@nestjs/common';
+import { SendNotificationDto } from '../dtos/send-notification.dto';
 
 /**
  * @abstract
@@ -13,5 +14,8 @@ export abstract class BotsProvider {
    * @description Sends notification message to the bot service
    * @param {string} notification - The notification message content to be sent
    */
-  abstract sendNotificationToBot(notification: string): Promise<void>;
+  abstract sendNotification(
+    sendNotificationDto: SendNotificationDto,
+  ): Promise<void>;
+  abstract requestOAuthToken(code: string): Promise<string>;
 }
