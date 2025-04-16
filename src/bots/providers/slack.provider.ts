@@ -1,13 +1,16 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { BotsProvider } from './bots.provider';
 import { ConfigService } from '@nestjs/config';
 import { App } from '@slack/bolt';
 import { KnownBlock } from '@slack/types';
 import { HttpService } from '@nestjs/axios';
 import { lastValueFrom } from 'rxjs';
 import { URLSearchParams } from 'url';
-import { SendNotificationDto } from '../dtos/send-notification.dto';
 import { not } from 'joi';
+import { get } from 'http';
+import { BotsProvider } from './bots.provider';
+import { SendNotificationDto } from '../dtos/send-notification.dto';
+import { getNewTaskView } from '../views/new-task.view';
+import { SlackIntegrationProvider } from './slack-integration.provider';
 
 /**
  * @class SlackProvider
@@ -15,7 +18,7 @@ import { not } from 'joi';
  */
 @Injectable()
 export class SlackProvider implements BotsProvider {
-  private app: App;
+  private SLACK_API_URL = 'https://slack.com/api';
   private readonly logger = new Logger(SlackProvider.name);
 
   /**
@@ -100,7 +103,7 @@ export class SlackProvider implements BotsProvider {
       const clientSecret =
         this.configService.get<string>('slack.clientSecret') || '';
       const redirectUri =
-        'https://511e-197-39-255-144.ngrok-free.app/bots/callback';
+        'https://9cd3-197-39-255-144.ngrok-free.app/bots/callback';
 
       const params = new URLSearchParams({
         client_id: clientId,
@@ -112,7 +115,7 @@ export class SlackProvider implements BotsProvider {
       // Exchange code for access token
       const response = await lastValueFrom(
         this.httpService.post(
-          'https://slack.com/api/oauth.v2.access',
+          `https://slack.com/api/oauth.v2.access`,
           params.toString(),
           {
             headers: {
@@ -129,6 +132,64 @@ export class SlackProvider implements BotsProvider {
     } catch (error) {
       this.logger.error('Failed to request OAuth token from Slack:', error);
       throw error;
+    }
+  }
+  public async openTaskModal(
+    trigger_id: string,
+    user_id: string,
+  ): Promise<void> {
+    this.logger.debug(`Opening task modal for user: ${user_id}`);
+
+    if (!trigger_id) {
+      throw new Error('Trigger ID is required to open a Slack modal');
+    }
+
+    // Get the bot token from config
+    const botToken = this.configService.get<string>('slack.botToken');
+
+    if (!botToken) {
+      throw new Error('Slack bot token is not configured');
+    }
+
+    // Define the modal view
+    const view = getNewTaskView();
+
+    // Prepare request body
+    const body = {
+      trigger_id,
+      view,
+    };
+    console.log(botToken);
+    try {
+      // Make API request to Slack
+      const response = await lastValueFrom(
+        this.httpService.post(`${this.SLACK_API_URL}/views.open`, body, {
+          headers: {
+            Authorization: `Bearer ${botToken}`,
+            'Content-Type': 'application/json',
+          },
+        }),
+      );
+
+      // Verify the response
+      const { data } = response;
+      console.log(data);
+
+      if (!data.ok) {
+        this.logger.error(`Slack API error: ${data.error}`);
+        throw new Error(`Failed to open modal: ${data.error}`);
+      }
+
+      this.logger.debug('Successfully opened task modal', {
+        user: user_id,
+        view_id: data.view?.id,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Error opening Slack modal: ${error.message}`,
+        error.stack,
+      );
+      throw new Error(`Failed to open Slack modal: ${error.message}`);
     }
   }
 }

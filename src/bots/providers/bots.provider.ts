@@ -12,10 +12,11 @@ export abstract class BotsProvider {
   /**
    * @abstract
    * @description Sends notification message to the bot service
-   * @param {string} notification - The notification message content to be sent
+   * @param {string} sendNotificationDto - The notification message content to be sent
    */
   abstract sendNotification(
     sendNotificationDto: SendNotificationDto,
   ): Promise<void>;
   abstract requestOAuthToken(code: string): Promise<string>;
+  abstract openTaskModal(trigger_id: string, user_id: string): Promise<void>;
 }

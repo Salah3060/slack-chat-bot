@@ -15,6 +15,8 @@ import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { SendNotificationDto } from './dtos/send-notification.dto';
+import { CreateSlackIntegrationDto } from './dtos/create-slack-integration.dto';
+import { SlackIntegrationProvider } from './providers/slack-integration.provider';
 
 /**
  * @class BotsController
@@ -43,6 +45,8 @@ export class BotsController {
      * @type {HttpService}
      */
     private readonly httpService: HttpService,
+
+    private readonly slackIntegrationProvider: SlackIntegrationProvider,
   ) {}
 
   /**
@@ -63,23 +67,48 @@ export class BotsController {
    * @param {Response} res - Express response object
    */
   @Get('/callback')
-  async handleSlackCallback(
+  async requestOAuthToken(
     @Query('code') code: string,
     @Query('state') state: string,
     @Res() res: Response,
   ) {
-    this.logger.log(
-      `Slack callback received with code: ${code.substring(0, 5)}...`,
-    );
-
     try {
-      const oauthToken = await this.botProvider.requestOAuthToken(code);
+      const oauthToken = (await this.botProvider.requestOAuthToken(
+        code,
+      )) as any;
       console.log(`OAuth token received`);
+      console.log(typeof oauthToken);
       console.log(oauthToken);
 
+      // 5. Use destructuring with proper defaults
+      const {
+        access_token: accessToken,
+        scope,
+        app_id: appId = '',
+        bot_user_id: botUserId = '',
+        authed_user: { id: authedUserId = '' } = {},
+        team: { id: teamId = '', name: teamName = '' } = {},
+        token_type: tokenType = 'bot',
+        is_enterprise_install: isEnterpriseInstall = false,
+      } = oauthToken;
+
+      // 6. Use a DTO class with validation
+      const createDto: CreateSlackIntegrationDto = {
+        accessToken,
+        scope,
+        slackUserId: authedUserId,
+        slackTeamId: teamId,
+        slackAppId: appId,
+        mudeerUserId: '',
+      };
+
+      // 7. Delegate to a service
+      await this.slackIntegrationProvider.create(createDto);
+
+      console.log('user created successfully');
       // Redirect to success page
       res.redirect('/bots/success');
-      return true;
+      // return true;
     } catch (error) {
       this.logger.error(`OAuth exchange failed: ${error.message}`, error.stack);
       return res.redirect('/bots/error?message=Authentication+failed');
@@ -95,7 +124,7 @@ export class BotsController {
   redirectToSlack(@Res() res: Response) {
     const clientId = this.configService.get<string>('slack.clientId');
     const redirectUri =
-      'https://511e-197-39-255-144.ngrok-free.app/bots/callback';
+      'https://9cd3-197-39-255-144.ngrok-free.app/bots/callback';
     const scope = 'chat:write,commands,users:read';
 
     // Generate random state for CSRF protection
