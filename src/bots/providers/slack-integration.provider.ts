@@ -91,4 +91,13 @@ export class SlackIntegrationProvider {
       throw error;
     }
   }
+  async findBySlackUserId(
+    slackUserId: string,
+    slackTeamId: string,
+    slackAppId: string,
+  ): Promise<SlackIntegration | null> {
+    return this.slackIntegrationRepository.findOne({
+      where: { slackUserId, slackTeamId, slackAppId },
+    });
+  }
 }

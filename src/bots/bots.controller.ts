@@ -22,6 +22,7 @@ import { SlackIntegrationProvider } from './providers/slack-integration.provider
 import { GenerateTokensProvider } from './providers/generate-token.provider';
 import { createHmac } from 'crypto';
 import { SlackSignatureGuard } from './guards/slack-signature.guard';
+import { SlackAuthorizationGuard } from './guards/slack-trigger.guard';
 
 /**
  * @class BotsController
@@ -68,7 +69,7 @@ export class BotsController {
       const oauthToken = (await this.botProvider.requestOAuthToken(
         code,
       )) as any;
-
+      console.log(oauthToken);
       // if the request is authorized from mudeer then it will have the mudeer user id
       const mudeerUserId =
         state.split('_')[0] === 'anon' ? undefined : state.split('_')[1];
@@ -126,6 +127,7 @@ export class BotsController {
 
   @Post('/slack/commands/new-task')
   // @UseGuards(SlackSignatureGuard)
+  @UseGuards(SlackAuthorizationGuard)
   @HttpCode(HttpStatus.OK)
   async triggerOpenTaskModel(@Body() body: any) {
     const { trigger_id, user_id } = body;
@@ -153,6 +155,7 @@ export class BotsController {
   }
 
   @Post('/slack/commands/link-with-mudeer')
+  @UseGuards(SlackAuthorizationGuard)
   // @UseGuards(SlackSignatureGuard)
   @HttpCode(HttpStatus.OK)
   redirectToMudeerWithSlackIdToken(@Body() body: any) {

@@ -23,7 +23,6 @@ export class SlackSignatureGuard implements CanActivate {
       .getRequest<Request & { rawBody?: string }>();
     const signature = request.headers['x-slack-signature'] as string;
     const timestamp = request.headers['x-slack-request-timestamp'] as string;
-    console.log('hiiiii');
     console.log(request.headers);
     // 1. Check if required headers are present
     if (!signature || !timestamp) {
@@ -51,8 +50,6 @@ export class SlackSignatureGuard implements CanActivate {
     const hmac = createHmac('sha256', signingSecret || '');
     const computedSignature = `v0=${hmac.update(baseString).digest('hex')}`;
 
-    console.log(computedSignature);
-    console.log(signature);
     // 5. Compare signatures
     const isValid = computedSignature === signature;
     if (!isValid) {
