@@ -22,7 +22,7 @@ import { SlackIntegrationProvider } from './providers/slack-integration.provider
 import { GenerateTokensProvider } from './providers/generate-token.provider';
 import { createHmac } from 'crypto';
 import { SlackSignatureGuard } from './guards/slack-signature.guard';
-import { SlackAuthorizationGuard } from './guards/slack-trigger.guard';
+import { SlackAuthorizationGuard } from './guards/slack-authorization.guard';
 
 /**
  * @class BotsController
