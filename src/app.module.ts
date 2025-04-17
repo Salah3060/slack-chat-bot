@@ -9,6 +9,8 @@ import slackConfig from './bots/config/slack.config';
 import databaseConfig from './config/database.config';
 import { SlackIntegration } from './bots/entities/slack-integration.entity';
 import { Logger } from '@nestjs/common';
+import { MiddlewareConsumer } from '@nestjs/common';
+import { RawBodyMiddleware } from './bots/middlewares/raw-body-middleware.middleware';
 
 @Module({
   imports: [
@@ -45,4 +47,8 @@ import { Logger } from '@nestjs/common';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RawBodyMiddleware).forRoutes('/bots/callback'); // Apply to specific routes that need raw body
+  }
+}

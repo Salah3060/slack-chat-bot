@@ -5,4 +5,6 @@ export default registerAs('slack', () => ({
   clientSecret: process.env.SLACK_CLIENT_SECRET,
   channel: process.env.SLACK_CHANNEL,
   clientId: process.env.SLACK_CLIENT_ID,
+  jwtSecret: process.env.SLACK_JWT_SECRET,
+  jwtTtl: process.env.SLACK_JWT_EXPIRATION,
 }));

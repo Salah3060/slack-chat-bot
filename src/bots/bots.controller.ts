@@ -9,6 +9,8 @@ import {
   Res,
   Logger,
   Inject,
+  Headers,
+  UseGuards,
 } from '@nestjs/common';
 import { BotsProvider } from './providers/bots.provider';
 import { Response } from 'express';
@@ -17,6 +19,9 @@ import { HttpService } from '@nestjs/axios';
 import { SendNotificationDto } from './dtos/send-notification.dto';
 import { CreateSlackIntegrationDto } from './dtos/create-slack-integration.dto';
 import { SlackIntegrationProvider } from './providers/slack-integration.provider';
+import { GenerateTokensProvider } from './providers/generate-token.provider';
+import { createHmac } from 'crypto';
+import { SlackSignatureGuard } from './guards/slack-signature.guard';
 
 /**
  * @class BotsController
@@ -27,26 +32,14 @@ export class BotsController {
   private readonly logger = new Logger(BotsController.name);
 
   constructor(
-    /**
-     * @description Injected BotsProvider that handles all bot communication logic.
-     * This follows Dependency Inversion Principle by depending on abstraction.
-     * @type {BotsProvider}
-     */
     private readonly botProvider: BotsProvider,
 
-    /**
-     * @description Injected ConfigService for accessing environment variables.
-     * @type {ConfigService}
-     */
     private readonly configService: ConfigService,
 
-    /**
-     * @description Injected HttpService for making HTTP requests.
-     * @type {HttpService}
-     */
     private readonly httpService: HttpService,
 
     private readonly slackIntegrationProvider: SlackIntegrationProvider,
+    private readonly generateTokensProvider: GenerateTokensProvider,
   ) {}
 
   /**
@@ -61,13 +54,12 @@ export class BotsController {
   }
 
   /**
-   * @description Handles the OAuth callback from Slack
-   * @param {string} code - Authorization code from Slack
-   * @param {string} state - State parameter for CSRF protection
-   * @param {Response} res - Express response object
+   * @description Handles the OAuth callback from Slack when the user authorizes the app.
    */
   @Get('/callback')
-  async requestOAuthToken(
+  // paused because of working in local environment
+  // @UseGuards(SlackSignatureGuard)
+  async handleCallback(
     @Query('code') code: string,
     @Query('state') state: string,
     @Res() res: Response,
@@ -76,20 +68,18 @@ export class BotsController {
       const oauthToken = (await this.botProvider.requestOAuthToken(
         code,
       )) as any;
-      console.log(`OAuth token received`);
-      console.log(typeof oauthToken);
-      console.log(oauthToken);
+
+      // if the request is authorized from mudeer then it will have the mudeer user id
+      const mudeerUserId =
+        state.split('_')[0] === 'anon' ? undefined : state.split('_')[1];
 
       // 5. Use destructuring with proper defaults
       const {
         access_token: accessToken,
         scope,
         app_id: appId = '',
-        bot_user_id: botUserId = '',
         authed_user: { id: authedUserId = '' } = {},
-        team: { id: teamId = '', name: teamName = '' } = {},
-        token_type: tokenType = 'bot',
-        is_enterprise_install: isEnterpriseInstall = false,
+        team: { id: teamId = '' } = {},
       } = oauthToken;
 
       // 6. Use a DTO class with validation
@@ -99,15 +89,16 @@ export class BotsController {
         slackUserId: authedUserId,
         slackTeamId: teamId,
         slackAppId: appId,
-        mudeerUserId: '',
+        mudeerUserId,
       };
+      console.log(createDto);
 
       // 7. Delegate to a service
-      await this.slackIntegrationProvider.create(createDto);
+      await this.slackIntegrationProvider.findAndUpdateOrCreate(createDto);
 
       console.log('user created successfully');
       // Redirect to success page
-      res.redirect('/bots/success');
+      res.redirect(`https://app.slack.com/client/${teamId}`);
       // return true;
     } catch (error) {
       this.logger.error(`OAuth exchange failed: ${error.message}`, error.stack);
@@ -115,24 +106,15 @@ export class BotsController {
     }
   }
 
-  @Get('/success')
-  successPage(@Res() res: Response) {
-    return res.status(200).send('Successfully connected to Slack!');
-  }
-
   @Get('/slack/oauth')
   redirectToSlack(@Res() res: Response) {
     const clientId = this.configService.get<string>('slack.clientId');
     const redirectUri =
-      'https://9cd3-197-39-255-144.ngrok-free.app/bots/callback';
+      'https://38de-197-39-255-144.ngrok-free.app/bots/callback';
     const scope = 'chat:write,commands,users:read';
 
-    // Generate random state for CSRF protection
-    const state =
-      Math.random().toString(36).substring(2, 15) +
-      Math.random().toString(36).substring(2, 15);
-
-    console.log(state);
+    // it will be mudeer user id incase of logged in from mudeer
+    const state = `anon_${Math.random().toString(36).substring(2)}_${Date.now()}`;
 
     // TODO: Store state in session/database for validation in callback
 
@@ -140,5 +122,41 @@ export class BotsController {
 
     this.logger.log('Redirecting to Slack authorization page');
     res.redirect(authUrl);
+  }
+
+  @Post('/slack/commands/new-task')
+  // @UseGuards(SlackSignatureGuard)
+  @HttpCode(HttpStatus.OK)
+  async triggerOpenTaskModel(@Body() body: any) {
+    const { trigger_id, user_id } = body;
+    await this.botProvider.openTaskModal(trigger_id, user_id);
+    return 'Thanks for using our service';
+  }
+
+  @Post('/slack/interactions/new-task')
+  // @UseGuards(SlackSignatureGuard)
+  @HttpCode(HttpStatus.OK)
+  handleInteractions(@Body() body: any) {
+    const payload = JSON.parse(body.payload);
+
+    if (payload.type === 'view_submission') {
+      // Process the submission
+      console.log('View submission received:', payload);
+
+      // Example: return success (closes the modal)
+      return {
+        response_action: 'clear',
+      };
+    }
+
+    return {};
+  }
+
+  @Post('/slack/commands/link-with-mudeer')
+  // @UseGuards(SlackSignatureGuard)
+  @HttpCode(HttpStatus.OK)
+  redirectToMudeerWithSlackIdToken(@Body() body: any) {
+    // the logic here is to redirect the user to mudeer with slack id token as a param
+    return 'Will redirect to mudeer with slack id token , comming soon';
   }
 }
